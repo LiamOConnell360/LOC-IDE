@@ -1,55 +1,75 @@
-import tkinter as tk
-from tkinter import ttk
 import os
+from pathlib import Path
 
-class FileManager(ttk.Treeview):
-    """
-    A tree view widget for navigating the project directory structure.
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Internal reference to self (the tree widget)
-        self.tree = self
-        # Ensure standard browse mode is active
-        self.configure(selectmode="browse")
+class FileManager:
+    """Handles file system navigation, directory tree construction, and content management."""
+    def __init__(self, root_path="."):
+        self.root_path = Path(root_path).resolve()
+        self.tree_data = {}
 
-    def populate_tree(self, root_dir):
-        """
-        Populates the tree with files and folders in the given directory.
-        Fixes: Uses 'tags' for differentiation instead of ID position
-        to prevent "Item already exists" errors from duplicate identifiers.
-        """
-        # Clear existing entries before repopulating to avoid duplicates on refresh
-        self.delete(*self.get_children())
+    def read_file(self, file_path):
+        """Reads the content of a file and returns it as a string."""
+        try:
+            # Convert to path object if it's a string for consistent handling
+            path = Path(file_path)
+            with open(path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+            return ""
 
-        # Use os.walk to traverse the directory tree
-        for root, dirs, files in os.walk(root_dir):
-            # Ensure we have a solid base for paths
-            current_path = os.path.abspath(root)
+    def save_file(self, file_path, content):
+        """Saves the provided string content to the given file path."""
+        try:
+            path = Path(file_path)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            print(f"Error saving file {file_path}: {e}")
+            return False
 
-            # Process Directories
-            for d in dirs:
-                full_path = os.path.abspath(os.path.join(root, d))
-                # Logic Fix: 'dir_node' is passing as a tag, not an ID.
-                # This allows multiple folders to share the same class/style.
-                self.insert("", "end", text=d, values=(full_path,), tags=("dir_node",))
+    def get_project_structure(self):
+        """Builds a dictionary representing the folder structure."""
+        # Exclude internal folders like .git, __pycache__, etc.
+        ignored_dirs = {'.git', '__pycache__', '.venv', 'env', '.vscode'}
 
-            # Process Files
-            for f in files:
-                full_path = os.path.abspath(os.path.join(root, f))
-                # Logic Fix: 'file_node' is used as a tag so each file still
-                # receives an automatically generated unique ID from Tkinter.
-                self.insert("", "end", text=f, values=(full_path,), tags=("file_node",))
+        def walk(path):
+            items = []
+            for item in sorted(os.listdir(str(path))):
+                # Skip hidden files/folders or those in ignore list
+                if item.startswith('.') or item in ignored_dirs:
+                    continue
 
-    def on_select(self, event):
-        """
-        Callback triggered when a user clicks/selects an item in the tree view.
-        """
-        selection = self.selection()
-        if selection:
-            item_id = selection[0]
-            # Fetch the 'values' tuple (which contains the [full_path])
-            values = self.item(item_id, "values")
-            if values and len(values) > 0:
-                selected_path = values[0]
-                print(f"Selected Path: {selected_path}")
+                full_path = path / item
+                if full_path.is_dir():
+                    items.append((item, True))
+                else:
+                    items.append((item, False))
+            return items
+
+        # Simple representation for a treeview logic
+        # Return the list instead of just the root to allow iterative building if needed
+        return walk(self.root_path)
+
+    def get_files(self):
+        """Returns all files in the directory for search/indexing."""
+        all_files = []
+        for root, dirs, files in os.walk(str(self.root_path)):
+            # Filter out ignored ones from walk
+            dirs[:] = [d for d in dirs if d not in {'.git', '__pycache__', '.venv', 'env'}]
+            for file in files:
+                all_files.append(os.path.join(root, file))
+        return all_files
+
+    def get_relative_path(self, absolute_path):
+        """Converts an absolute path to a relative path from the root."""
+        try:
+            return os.path.relpath(absolute_path, self.root_path)
+        except ValueError:
+            return str(absolute_path)
+
+    def is_file_in_project(self, file_path):
+        """Checks if a path inside the project root."""
+        p = Path(file_path).resolve()
+        return str(self.root_path) in str(p)
